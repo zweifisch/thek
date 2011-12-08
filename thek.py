@@ -2,7 +2,7 @@
 #
 # TODO
 # * find keywords in filename and category based on keywords?
-# * str instead of number?
+# * access frequency in history
 
 import sys,json,shelve
 from os import path
@@ -30,9 +30,28 @@ class Tehk:
 		index.update(dic)
 		self.persist['index']=index
 
+	def append_to_history(self,path):
+		history = self.persist.get('history',[])
+		if(path not in history):
+			history.append(path)
+		else:
+			history.remove(path)
+			history.append(path)
+		self.persist['history']=history
+
 	def cmd_debug(self,key):
 		print self.persist.get(key)
-	
+
+	def cmd_history_clear(self):
+		del self.persist['history']
+
+	def cmd_history(self,subcmd=''):
+		if(subcmd):
+			return self.call_cmd('history_'+subcmd)
+		history = self.persist.get('history')
+		if(history):
+			self.numerate(history,persist_index=history)
+
 	def cmd_ls(self,cat=''):
 		if(cat):
 			self.set_default_action('open')
@@ -50,6 +69,7 @@ class Tehk:
 	
 	def cmd_open(self,path):
 		Popen('%s "%s"' % (self.config.get('runner'),path),shell=True)
+		self.append_to_history(path)
 		self.quit(msg="%s opend" % path)
 
 	def set_default_action(self,action):
@@ -67,7 +87,7 @@ class Tehk:
 		else:
 			self.quit(msg="Thek can't find %s" % key, code=1)
 		
-	def call_cmd(self,cmd,args):
+	def call_cmd(self,cmd,args=[]):
 		executor = getattr(self,'cmd_'+cmd,None)
 		if(executor):
 			executor(*args)
