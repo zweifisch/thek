@@ -3,6 +3,6 @@
 	"location":"~/books/",
 	"runner":"mupdf",
 	"filter":"*.pdf",
-	"history":"/tmp/shelve-tehk"
+	"history":"~/.thek.shelve"
 }
 ]

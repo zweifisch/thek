@@ -2,18 +2,19 @@
 #
 # TODO
 # * find keywords in filename and category based on keywords?
-# * access frequency in history
 
 import sys,json,shelve
+import operator
 from os import path
 from subprocess import Popen
 from glob import glob
+from collections import defaultdict
 
 class Tehk:
 
 	def __init__(self,config):
 		self.config = config.pop()
-		self.persist = shelve.open(self.config.get('history'))
+		self.persist = shelve.open(path.expanduser(self.config.get('history')))
 
 	def quit(self,**kargs):
 		self.persist.close()
@@ -31,32 +32,33 @@ class Tehk:
 		self.persist['index']=index
 
 	def append_to_history(self,path):
-		history = self.persist.get('history',[])
-		if(path not in history):
-			history.append(path)
-		else:
-			history.remove(path)
-			history.append(path)
+		history = defaultdict(int)
+		history.update(self.persist.get('history',{}))
+		history[path] +=1
 		self.persist['history']=history
 
 	def cmd_debug(self,key):
+		"list access history"
 		print self.persist.get(key)
 
-	def cmd_history_clear(self):
-		del self.persist['history']
-
-	def cmd_history(self,subcmd=''):
-		if(subcmd):
-			return self.call_cmd('history_'+subcmd)
+	def cmd_history_ls(self):
+		"list access history"
 		history = self.persist.get('history')
 		if(history):
-			self.numerate(history,persist_index=history)
+			history = sorted(history.iteritems(),key=operator.itemgetter(1),reverse=True)
+			self.numerate(map(lambda (k,f): "%s (%d)" % (path.basename(k).replace('-',' '),f), history),
+                            persist_index=map(lambda (k,f):k, history))
+
+	def cmd_history_clear(self):
+		"clean access history"
+		del self.persist['history']
+
+	def cmd_history(self,subcmd='ls'):
+		"list acceess history"
+		return self.call_cmd('history_'+subcmd)
 
 	def cmd_ls(self,cat=''):
-		if(cat):
-			self.set_default_action('open')
-		else:
-			self.set_default_action('ls')
+		"list dir"
 		pattern = path.join(path.expanduser(self.config.get('location')),cat,'*')
 		pathes = glob(pattern)
 		if(pathes):
@@ -68,24 +70,34 @@ class Tehk:
 			self.quit(msg='nothing found')
 	
 	def cmd_open(self,path):
+		"open file"
 		Popen('%s "%s"' % (self.config.get('runner'),path),shell=True)
 		self.append_to_history(path)
 		self.quit(msg="%s opend" % path)
 
-	def set_default_action(self,action):
-		self.persist['default_action']=action
+	def cmd_help(self,**args):
+		"show this help info"
+		if(len(args)==0):
+			attrs = dir(self)
+			print "\n".join(
+				map(lambda x: "%s\t%s" % (x[4:].replace('_',' '), getattr(self,x).__doc__),
+				filter(lambda x:x[:3]=='cmd',attrs)))
 
 	def call_by_key(self,key):
-		action = self.persist.get('default_action')
 		indexes = self.persist.get('index')
-		if(not action or not indexes):
+		if(not indexes):
 			self.quit(msg="Thek doesn't know what to do",code=1)
 
-		if(indexes.get(key)):
-			if(not self.call_cmd(action,[indexes.get(key)])):
-				self.quit(msg="Thek can't %s" % action, code=1)
-		else:
+		f = indexes.get(key)
+		if(not f):
 			self.quit(msg="Thek can't find %s" % key, code=1)
+
+		if(path.isfile(f)):
+			self.call_cmd('open',[f])
+		elif(path.isdir(f)):
+			self.call_cmd('ls',[f])
+		else:
+			self.quit(msg="Thek can't find %s" % f, code=1)
 		
 	def call_cmd(self,cmd,args=[]):
 		executor = getattr(self,'cmd_'+cmd,None)
